@@ -46,11 +46,10 @@ declare_syntax_cat hbasic
 syntax "proof" (noWs "[" num "]")? withPosition(colGe hbasic)* "qed" : term
 
 /- Syntax Checking -/
-def checkCMD := Lean.Parser.checkLineEq "command (MP, DT, HYP, LEM)"
-def checkTHM := Lean.Parser.checkLineEq "theorem name"
-def checkARG := Lean.Parser.checkColGt "proposition"
-def checkREF := Lean.Parser.checkLineEq "line number"
-def checkVAR := Lean.Parser.checkLineEq "variable name"
+abbrev checkCMD := Lean.Parser.checkLineEq "command (MP, DT, HYP, LEM)"
+abbrev checkTHM := Lean.Parser.checkLineEq "theorem name"
+abbrev checkARG := Lean.Parser.checkColGt "proposition"
+abbrev checkREF := Lean.Parser.checkLineEq "line number"
 
 /-- Modus Ponens 
 
@@ -99,41 +98,41 @@ syntax num ws (checkCMD "HYP ") (checkARG term:max) : hbasic
 syntax num ws (checkCMD "THM ") (checkTHM ident) (colGt term:max)* : hbasic
 
 /- TODO: document implementation -/
-macro_rules
-| `(proof qed) => `(by done)
-| `(proof[$m] qed) => 
+open Lean in macro_rules
+| `(proof qed%$tk) => withRef tk `(by done)
+| `(proof[$m] qed%$tk) => 
   let lm := mkLineId m.getNat
-  `(by first | exact $lm | done)
-| `(proof$[[$m]]? $n:num MP $ref $rest* qed) =>
+  withRef tk `(by first | exact $lm | done)
+| `(proof$[[$m]]? $n:num MP%$tk $ref $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
     let lref := mkLineId ref.getNat
-    `(have $ln : (_ : Prop) := $lref (by first | assumption | fail "missing hypothesis"); proof[$n] $rest* qed)
+    withRef n `(have $ln : (_ : Prop) := $lref (by first | assumption | fail "missing hypothesis"); proof[$n] $rest* qed)
   else
-    Lean.Macro.throwError "line numbers must be positive and increasing"
-| `(proof$[[$m]]? $n:num DT $rest* qed) =>
+    Macro.throwErrorAt n "line numbers must be positive and increasing"
+| `(proof$[[$m]]? $n:num DT%$tk $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
-    `(fun $ln : (_ : Prop) => proof[$n] $rest* qed)
+    withRef n `(fun $ln : (_ : Prop) => proof[$n] $rest* qed)
   else
-    Lean.Macro.throwError "line numbers must be positive and increasing"
-| `(proof$[[$m]]? $n:num HYP $h $rest* qed) =>
+    Macro.throwErrorAt n "line numbers must be positive and increasing"
+| `(proof$[[$m]]? $n:num HYP%$tk $h $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
-    `(have $ln : ($h : Prop) := (by assumption); proof[$n] $rest* qed)
+    withRef n `(have $ln : ($h : Prop) := (by assumption); proof[$n] $rest* qed)
   else
-    Lean.Macro.throwError "line numbers must be positive and increasing"
-| `(proof$[[$m]]? $n:num THM $name:ident $args:term* $rest:hbasic* qed) =>
+    Macro.throwErrorAt n "line numbers must be positive and increasing"
+| `(proof$[[$m]]? $n:num THM%$tk $name:ident $args:term* $rest:hbasic* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
     let tn := mkThmId name.getId
-    `(have $ln : (_ : Prop) := $tn $args*; proof[$n] $rest* qed)  
+    withRef n `(have $ln : (_ : Prop) := $tn $args*; proof[$n] $rest* qed)  
   else
-    Lean.Macro.throwError "line numbers must be positive and increasing"
+    Macro.throwErrorAt n "line numbers must be positive and increasing"
 
 /- Basic Theorems
 
@@ -258,6 +257,26 @@ end basic_theorems
 /- Testing Zone -/
 section test_theorems
 
+thm IFTRANS a b c :
+⊢ (a → b) → (b → c) → a → c :=
+proof
+10 DT
+20 DT
+30 DT
+40 MP 10
+50 MP 20
+qed
+
+thm IFLCOMM a b c :
+⊢ (a → b → c) → b → a → c :=
+proof
+10 DT
+20 DT
+30 DT
+40 MP 10
+50 MP 40
+qed
+
 thm ANDIDEMR a :
 ⊢ a → a ∧ a :=
 proof
@@ -273,6 +292,66 @@ proof
 10 THM ANDL a a
 20 THM ANDIDEMR a
 30 THM IFFI (a ∧ a) a
+40 MP 30
+50 MP 40
+qed
+
+thm ANDCOMM a b :
+⊢ a ∧ b → b ∧ a :=
+proof
+10 THM ANDE a b (b ∧ a)
+20 THM IFLCOMM b a (b ∧ a)
+30 THM ANDI b a
+40 MP 20
+50 MP 10
+qed
+
+thm ANDASSOCL a b c :
+⊢ a ∧ (b ∧ c) → (a ∧ b) ∧ c :=
+proof
+10 DT
+20 THM ANDL a (b ∧ c)
+30 MP 20
+40 THM ANDR a (b ∧ c)
+50 MP 40
+60 THM ANDL b c
+70 MP 60
+80 THM ANDR b c
+90 MP 80
+100 THM ANDI a b
+110 MP 100
+120 MP 110
+130 THM ANDI (a ∧ b) c
+140 MP 130
+150 MP 140
+qed
+
+thm ANDASSOCR a b c :
+⊢ (a ∧ b) ∧ c → a ∧ (b ∧ c) :=
+proof
+10 DT
+20 THM ANDR (a ∧ b) c
+30 MP 20
+40 THM ANDL (a ∧ b) c
+50 MP 40
+60 THM ANDR a b
+70 MP 60
+80 THM ANDL a b
+90 MP 80
+100 THM ANDI b c
+110 MP 100
+120 MP 110
+130 THM ANDI a (b ∧ c)
+140 MP 130
+150 MP 140
+qed
+
+thm ANDASSOC a b c :
+⊢ (a ∧ b) ∧ c ↔ a ∧ (b ∧ c) :=
+proof
+10 THM ANDASSOCL a b c
+20 THM ANDASSOCR a b c
+30 THM IFFI ((a ∧ b) ∧ c) (a ∧ (b ∧ c))
 40 MP 30
 50 MP 40
 qed
@@ -295,5 +374,136 @@ proof
 40 MP 30
 50 MP 40
 qed
+
+thm ORCOMM a b :
+⊢ a ∨ b → b ∨ a :=
+proof
+10 THM ORL b a
+20 THM ORR b a
+30 THM ORE a b (b ∨ a)
+40 MP 30
+50 MP 40
+qed
+
+thm ORASSOCL a b c :
+⊢ a ∨ (b ∨ c) → (a ∨ b) ∨ c :=
+proof
+10 DT
+20 THM ORE a (b ∨ c) ((a ∨ b) ∨ c)
+30 THM ORL a b
+40 THM ORL (a ∨ b) c
+50 THM IFTRANS a (a ∨ b) ((a ∨ b) ∨ c)
+60 MP 50
+70 MP 60
+80 MP 20
+90 THM ORE b c ((a ∨ b) ∨ c)
+100 THM ORR a b
+110 THM ORL (a ∨ b) c
+120 THM ORR (a ∨ b) c
+130 THM IFTRANS b (a ∨ b) ((a ∨ b) ∨ c)
+140 MP 130
+150 MP 140
+160 MP 90
+170 MP 160
+180 MP 80
+190 MP 180
+qed
+
+thm ORASSOCR a b c :
+⊢ (a ∨ b) ∨ c → a ∨ (b ∨ c) :=
+proof
+10 DT
+20 THM ORE a b (a ∨ (b ∨ c))
+30 THM ORL a (b ∨ c)
+40 THM ORL b c
+50 THM ORR a (b ∨ c)
+60 THM IFTRANS b (b ∨ c) (a ∨ (b ∨ c))
+70 MP 60
+80 MP 70
+90 MP 20
+100 MP 90
+110 THM ORR b c
+120 THM IFTRANS c (b ∨ c) (a ∨ (b ∨ c))
+130 MP 120
+140 MP 130
+150 THM ORE (a ∨ b) c (a ∨ (b ∨ c))
+160 MP 150
+170 MP 160
+180 MP 170
+qed
+
+thm ORASSOC a b c :
+⊢ (a ∨ b) ∨ c ↔ a ∨ (b ∨ c) :=
+proof
+10 THM ORASSOCL a b c
+20 THM ORASSOCR a b c
+30 THM IFFI ((a ∨ b) ∨ c) (a ∨ (b ∨ c))
+40 MP 30
+50 MP 40
+qed
+
+thm ORRESL a b :
+⊢ a ∨ b → ¬a → b :=
+proof
+10 DT
+20 DT
+30 THM ORE a b b
+40 THM IFTRANS a ⊥ b
+50 THM NOTE a
+60 MP 50
+70 MP 40
+80 THM EXFALSO b
+90 MP 70
+100 MP 30
+110 THM AXI b
+120 MP 100
+130 MP 120
+qed
+
+thm ORRESR a b :
+⊢ a ∨ b → ¬b → a :=
+proof
+10 DT
+20 DT
+30 THM ORE a b a
+40 THM AXI a
+50 MP 30
+60 THM IFTRANS b ⊥ a
+70 THM NOTE b
+80 MP 70
+90 MP 60
+100 THM EXFALSO a
+110 MP 90
+120 MP 50
+130 MP 120
+qed
+
+thm ANDDISTRIBL a b c :
+⊢ a ∧ (b ∨ c) → (a ∧ b) ∨ (a ∧ c) :=
+proof
+10 DT
+20 THM ANDL a (b ∨ c)
+30 MP 20
+40 THM ANDR a (b ∨ c)
+50 MP 40
+60 THM ORE b c ((a ∧ b) ∨ (a ∧ c))
+70 THM IFTRANS b (a ∧ b) ((a ∧ b) ∨ (a ∧ c))
+80 THM ANDI a b
+90 MP 80
+100 MP 70
+110 THM ORL (a ∧ b) (a ∧ c)
+120 MP 100
+130 THM IFTRANS c (a ∧ c) ((a ∧ b) ∨ (a ∧ c))
+140 THM ANDI a c
+150 MP 140
+160 MP 130
+170 THM ORR (a ∧ b) (a ∧ c)
+180 MP 160
+190 MP 60
+200 MP 190
+210 MP 200
+qed
+
+#print «T@ORRESR»
 
 end test_theorems
