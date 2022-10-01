@@ -3,6 +3,9 @@ import Lean
 section utils
 open Lean
 
+/-- True Notation -/
+notation "⊤" => True
+
 /-- False Notation -/
 notation "⊥" => False
 
@@ -141,6 +144,8 @@ open Lean in macro_rules
 The two deduction rules Modus Ponens (`MP`) and Deduction Theorem (`DT`) only characterize implication.
 The basic axioms below are necessary to define the other logical connectives:
 
+- True (⊤)
+- False (⊥)
 - Negation (¬·)
 - Conjunction (·∧·)
 - Disjunction (·∨·)
@@ -181,6 +186,19 @@ proof
 40 MP 20
 50 MP 10
 60 MP 50
+qed
+
+/-- Trivial: ⊤ -/
+thm TRIV : 
+⊢ ⊤ := True.intro
+
+/-- True Elimination: (⊤ → a) → a -/
+thm THUS a :
+⊢ (⊤ → a) → a :=
+proof
+10 DT
+20 THM TRIV;
+30 MP 10
 qed
 
 /-- Ex Falso Quodlibet: ⊥ → a -/
@@ -356,6 +374,18 @@ proof
 30 THM IFFI ((a ∧ b) ∧ c) (a ∧ (b ∧ c))
 40 MP 30
 50 MP 40
+qed
+
+thm ANDTRUEL a :
+⊢ ⊤ ∧ a ↔ a :=
+proof
+10 THM TRIV;
+20 THM ANDR ⊤ a
+30 THM ANDI ⊤ a
+40 MP 30
+50 THM IFFI (⊤ ∧ a) a
+60 MP 50
+70 MP 60 
 qed
 
 thm ORIDEML a :
