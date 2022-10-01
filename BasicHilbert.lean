@@ -51,6 +51,8 @@ abbrev checkTHM := Lean.Parser.checkLineEq "theorem name"
 abbrev checkARG := Lean.Parser.checkColGt "proposition"
 abbrev checkREF := Lean.Parser.checkLineEq "line number"
 
+open Lean.Parser (semicolonOrLinebreak)
+
 /-- Modus Ponens 
 
   Syntax: `<lnum> MP <lref>`
@@ -61,7 +63,7 @@ abbrev checkREF := Lean.Parser.checkLineEq "line number"
   When the statement referred to by `lref` is `A → B` then this proof command searches for the hypothesis `A` among the previous lines.
   If `A` is found then it assigns `B` to the current line number.
 -/
-syntax num ws (checkCMD "MP ") (checkREF num) : hbasic
+syntax num ws (checkCMD "MP ") (checkREF num) semicolonOrLinebreak : hbasic
 
 /-- Deduction Theorem 
 
@@ -69,7 +71,7 @@ syntax num ws (checkCMD "MP ") (checkREF num) : hbasic
 
   When the current goal is `A → B` then this proof command assigns `A` to the current line number and sets the goal to `B`. 
 -/
-syntax num ws (checkCMD "DT ") : hbasic
+syntax num ws (checkCMD "DT ") semicolonOrLinebreak : hbasic
 
 /-- Recall Hypothesis
 
@@ -81,7 +83,7 @@ syntax num ws (checkCMD "DT ") : hbasic
   This proof command searches for `prop` among the theorem hypotheses and previous lines.
   If `prop` is found then it assigns `prop` to the current line number.
 -/
-syntax num ws (checkCMD "HYP ") (checkARG term:max) : hbasic
+syntax num ws (checkCMD "HYP ") (checkARG term:max) semicolonOrLinebreak : hbasic
 
 /-- Invoke Theorem 
 
@@ -95,7 +97,7 @@ syntax num ws (checkCMD "HYP ") (checkARG term:max) : hbasic
   If the theorem has hypotheses, it searches for each one among previous lines.
   Then it assigns the theorem's main proposition to the current line number.
 -/
-syntax num ws (checkCMD "THM ") (checkTHM ident) (colGt term:max)* : hbasic
+syntax num ws (checkCMD "THM ") (checkTHM ident) (colGt term:max)* semicolonOrLinebreak : hbasic
 
 /- TODO: document implementation -/
 open Lean in macro_rules
@@ -103,7 +105,7 @@ open Lean in macro_rules
 | `(proof[$m] qed%$tk) => 
   let lm := mkLineId m.getNat
   withRef tk `(by first | exact $lm | done)
-| `(proof$[[$m]]? $n:num MP%$tk $ref $rest* qed) =>
+| `(proof$[[$m]]? $n:num MP%$tk $ref; $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
@@ -111,21 +113,21 @@ open Lean in macro_rules
     withRef n `(have $ln : (_ : Prop) := $lref (by first | assumption | fail "missing hypothesis"); proof[$n] $rest* qed)
   else
     Macro.throwErrorAt n "line numbers must be positive and increasing"
-| `(proof$[[$m]]? $n:num DT%$tk $rest* qed) =>
+| `(proof$[[$m]]? $n:num DT%$tk; $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
     withRef n `(fun $ln : (_ : Prop) => proof[$n] $rest* qed)
   else
     Macro.throwErrorAt n "line numbers must be positive and increasing"
-| `(proof$[[$m]]? $n:num HYP%$tk $h $rest* qed) =>
+| `(proof$[[$m]]? $n:num HYP%$tk $h; $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
     withRef n `(have $ln : ($h : Prop) := (by assumption); proof[$n] $rest* qed)
   else
     Macro.throwErrorAt n "line numbers must be positive and increasing"
-| `(proof$[[$m]]? $n:num THM%$tk $name:ident $args:term* $rest:hbasic* qed) =>
+| `(proof$[[$m]]? $n:num THM%$tk $name:ident $args:term*; $rest* qed) =>
   let m := match m with | some m => m.getNat | none => 0
   if m < n.getNat then 
     let ln := mkLineId n.getNat
@@ -503,7 +505,5 @@ proof
 200 MP 190
 210 MP 200
 qed
-
-#print «T@ORRESR»
 
 end test_theorems
